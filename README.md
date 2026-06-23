@@ -1,43 +1,176 @@
 # Self-Healing AWS Egress Path via BGP & Containerized FRRouting
 
-This repository contains a highly available, self-healing egress routing architecture designed for AWS environments with strict zonal constraints (such as AWS Local Zones) where managed NAT Gateways are unavailable. 
+AWS Local Zones do not currently support managed NAT Gateways. As a result, workloads often depend on a single NAT instance for internet-bound traffic, creating a critical single point of failure.
 
-Instead of relying on fragile, reactive automation scripts (like Lambda or CloudWatch route updates) that introduce minutes of downtime during an outage, this architecture pushes failover detection down to the network protocol layer using **internal BGP (iBGP)** and **AWS Transit Gateway Connect**.
+This project demonstrates a routing-based approach to eliminating that dependency. Instead of relying on Lambda functions, route table updates, or instance replacement workflows, failover is handled directly by the routing protocol using AWS Transit Gateway Connect and internal BGP (iBGP).
+
+When a NAT appliance becomes unavailable, its route is automatically withdrawn and traffic converges to the remaining healthy appliance without manual intervention.
+
+---
 
 ## Architecture Overview
 
-The design leverages two standard EC2 instances configured as NAT appliances running side-by-side within a single zone. 
+The design consists of two EC2 instances acting as NAT appliances running FRRouting (FRR) containers.
 
-1. **Routing Control Plane:** Each NAT instance runs a privileged Docker container hosting an **FRRouting (FRR)** daemon.
-2. **Overlay Network:** The FRR container establishes an iBGP session over a GRE tunnel back to the AWS Transit Gateway (TGW) Connect endpoints.
-3. **Active/Active Load Balancing:** Both instances actively advertise a `0.0.0.0/0` default route to the TGW. The TGW uses **Equal-Cost Multi-Path (ECMP)** routing to balance outbound traffic evenly across both nodes.
-4. **Proactive Failover:** If an instance crashes, freezes, or loses upstream connectivity, the BGP hold timer expires. The TGW instantly drops the path and seamlessly routes 100% of egress traffic to the remaining healthy instance within seconds.
+### Routing Control Plane
+
+Each NAT instance runs a privileged Docker container hosting an FRRouting daemon.
+
+### Overlay Network
+
+The FRRouting containers establish iBGP sessions across a GRE tunnel backed by AWS Transit Gateway Connect attachments.
+
+### Active/Active Load Balancing
+
+Both NAT instances advertise a `0.0.0.0/0` default route to the Transit Gateway.
+
+The Transit Gateway uses Equal-Cost Multi-Path (ECMP) routing to distribute outbound traffic across both nodes.
+
+### Proactive Failover
+
+If a NAT appliance:
+
+- Crashes
+- Freezes
+- Loses upstream connectivity
+
+The BGP hold timer expires and the Transit Gateway immediately removes the failed path.
+
+Traffic automatically converges to the remaining healthy node within seconds.
+
+---
+
+## Architecture Diagram
+
+```text
+                     Internet
+                         |
+            +-------------------------+
+            |       Transit Gateway   |
+            +-------------------------+
+                 /               \
+                /                 \
+       GRE + iBGP             GRE + iBGP
+             |                     |
+    +----------------+   +----------------+
+    | NAT Appliance 1|   | NAT Appliance 2|
+    | FRR Container  |   | FRR Container  |
+    +----------------+   +----------------+
+             \                 /
+              \               /
+               \             /
+            Private Workloads
+```
+
+---
 
 ## Repository Structure
 
-* `main.tf`: The monolithic Terraform configuration containing the VPC layout, subnets, Transit Gateway, TGW Connect attachments, and EC2 computing resources.
-* `.gitignore`: Configured to keep local state files, provider binaries, and credentials out of version control.
-* `.terraform.lock.hcl`: Dependency lock file ensuring predictable deployment execution.
+| File | Description |
+|--------|-------------|
+| `main.tf` | Terraform configuration containing VPC, Transit Gateway, TGW Connect attachments, EC2 instances, and networking resources |
+| `.gitignore` | Excludes local state files, provider binaries, and credentials |
+| `.terraform.lock.hcl` | Terraform dependency lock file |
 
-## Core Technical Solutions & Fixes Implemented
+---
+
+## Core Technical Solutions
 
 ### 1. Decoupled Containerized Routing
-To avoid dependency collision and versioning issues within minimal host distributions like Amazon Linux 2023 (AL2023), the FRRouting engine is deployed inside a container sharing the host network stack.
+
+To avoid dependency conflicts on minimal operating systems such as Amazon Linux 2023, the FRRouting stack runs inside a Docker container while sharing the host network namespace.
 
 ### 2. NAT Bypass Logic
-Because the instances perform outbound translation, a specific `iptables` rule is implemented at the top of the `POSTROUTING` chain to explicitly exempt GRE tunnel traffic (`169.254.0.0/16`) from undergoing masquerade processing. This prevents the Transit Gateway from silently dropping modified BGP packets.
+
+Since the EC2 instances perform outbound NAT, an explicit `iptables` exemption is required.
+
+```bash
+iptables -t nat -I POSTROUTING \
+-s 169.254.0.0/16 \
+-j ACCEPT
+```
+
+This prevents GRE tunnel traffic from being masqueraded and ensures BGP packets reach the Transit Gateway unchanged.
 
 ### 3. Protocol Compliance
-The setup relies on clean routing logic that honors strict iBGP rules. It avoids invalid AS-Path modifications within a single Autonomous System Number (ASN), allowing native ECMP path selection across the active nodes.
+
+The design follows standard iBGP behavior and avoids invalid AS-PATH modifications within the same ASN.
+
+Benefits include:
+
+- Standards-compliant routing
+- ECMP support
+- Predictable failover behavior
 
 ### 4. MSS Clamping
-To prevent fragmentation and packet drops across the GRE overlay network (which introduces a 24-byte header overhead), TCP Maximum Segment Size (MSS) clamping is enforced on the tunnel interface.
 
-## How to Test Failover Recovery
+The GRE overlay introduces additional packet overhead.
 
-1. Access a private workload instance located behind the Transit Gateway.
-2. Initiate a continuous egress traffic validation test:
-   `ping 8.8.8.8`
-3. Simulate a sudden infrastructure drop by stopping the routing control plane on the primary NAT appliance:
-   `sudo docker stop frr`
-4. Observe the continuous stream. The routing path shifts to the backup instance within a few lost packets, requiring zero API coordination or manual route table alterations.
+To prevent fragmentation:
+
+```bash
+iptables -t mangle -A FORWARD \
+-p tcp --tcp-flags SYN,RST SYN \
+-j TCPMSS --clamp-mss-to-pmtu
+```
+
+This ensures reliable TCP communication across the overlay network.
+
+---
+
+## Failover Testing
+
+### Step 1: Connect to a Private Workload
+
+Access a workload instance located behind the Transit Gateway.
+
+### Step 2: Generate Continuous Traffic
+
+```bash
+ping 8.8.8.8
+```
+
+### Step 3: Simulate Failure
+
+Stop FRRouting on the primary appliance:
+
+```bash
+sudo docker stop frr
+```
+
+### Step 4: Observe Recovery
+
+The active BGP path is withdrawn and traffic automatically shifts to the surviving NAT appliance.
+
+Expected behavior:
+
+- A few dropped packets
+- No manual intervention
+- No route table updates
+- Automatic convergence
+
+---
+
+## Key Benefits
+
+- Active/Active NAT architecture
+- BGP-driven failover
+- Transit Gateway ECMP load balancing
+- No route table manipulation
+- No AWS Lambda dependencies
+- Fast recovery during appliance failure
+- Suitable for AWS Local Zones
+
+---
+
+## Technologies Used
+
+- Terraform
+- AWS Transit Gateway
+- Transit Gateway Connect
+- GRE Tunnels
+- FRRouting (FRR)
+- Docker
+- Amazon Linux 2023
+- BGP (iBGP)
+- ECMP
