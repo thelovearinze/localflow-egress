@@ -154,12 +154,13 @@ resource "aws_instance" "nat_1" {
     volume_size = 8
   }
 
-  user_data              = <<-EOF
-              #!/bin/bash
-              sysctl -w net.ipv4.ip_forward=1
-              echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-              iptables -t nat -A POSTROUTING ! -d 192.168.0.0/16 -j MASQUERADE
-              EOF
+  user_data = <<-EOF
+    #!/bin/bash
+    sysctl -w net.ipv4.ip_forward=1
+    echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+    iptables -t nat -I POSTROUTING -d 169.254.0.0/16 -j ACCEPT
+    iptables -t nat -A POSTROUTING ! -d 192.168.0.0/16 -j MASQUERADE
+  EOF
 }
 
 # --- NAT Appliance 2 ---
@@ -182,12 +183,13 @@ resource "aws_instance" "nat_2" {
     create = "5m"
   }
 
-  user_data              = <<-EOF
-              #!/bin/bash
-              sysctl -w net.ipv4.ip_forward=1
-              echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
-              iptables -t nat -A POSTROUTING ! -d 192.168.0.0/16 -j MASQUERADE
-              EOF
+  user_data = <<-EOF
+    #!/bin/bash
+    sysctl -w net.ipv4.ip_forward=1
+    echo "net.ipv4.ip_forward=1" >> /etc/sysctl.conf
+    iptables -t nat -I POSTROUTING -d 169.254.0.0/16 -j ACCEPT
+    iptables -t nat -A POSTROUTING ! -d 192.168.0.0/16 -j MASQUERADE
+  EOF
 }
 
 # --- Elastic IP ---
