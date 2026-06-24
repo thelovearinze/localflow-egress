@@ -6,7 +6,6 @@ This project demonstrates a routing-based approach to eliminating that dependenc
 
 When a NAT appliance becomes unavailable, its route is automatically withdrawn and traffic converges to the remaining healthy appliance without manual intervention.
 
----
 
 ## Architecture Overview
 
@@ -38,7 +37,6 @@ The BGP hold timer expires and the Transit Gateway immediately removes the faile
 
 Traffic automatically converges to the remaining healthy node within seconds.
 
----
 
 ## Architecture Diagram
 
@@ -62,7 +60,7 @@ Traffic automatically converges to the remaining healthy node within seconds.
             Private Workloads
 ```
 
----
+
 
 ## Repository Structure
 
@@ -72,7 +70,7 @@ Traffic automatically converges to the remaining healthy node within seconds.
 | `.gitignore` | Excludes local state files, provider binaries, and credentials |
 | `.terraform.lock.hcl` | Terraform dependency lock file |
 
----
+
 
 ## Core Technical Solutions
 
@@ -116,8 +114,6 @@ iptables -t mangle -A FORWARD \
 
 This ensures reliable TCP communication across the overlay network.
 
----
-
 ## Failover Testing
 
 ### Step 1: Connect to a Private Workload
@@ -145,11 +141,8 @@ The active BGP path is withdrawn and traffic automatically shifts to the survivi
 Expected behavior:
 
 - A few dropped packets
-- No manual intervention
-- No route table updates
 - Automatic convergence
 
----
 
 ## Key Benefits
 
@@ -160,8 +153,6 @@ Expected behavior:
 - No AWS Lambda dependencies
 - Fast recovery during appliance failure
 - Suitable for AWS Local Zones
-
----
 
 ## Technologies Used
 
