@@ -1,4 +1,4 @@
-# Self-Healing AWS Egress Path via BGP & Containerized FRRouting
+# Self-Healing AWS Egress Path via BGP & Containerized FRRouting POC
 
 AWS Local Zones do not currently support managed NAT Gateways. As a result, workloads often depend on a single NAT instance for internet-bound traffic, creating a critical single point of failure.
 
