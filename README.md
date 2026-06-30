@@ -11,7 +11,6 @@ This repository accompanies the engineering case study:
 https://medium.com/@thelovearinze/building-a-self-healing-egress-architecture-for-aws-local-zones-235967dadd22
 
 
-
 ## Overview
 
 AWS Local Zones do not currently provide managed NAT Gateways. As a result, private workloads often rely on a single EC2 NAT instance for outbound internet access, introducing a critical single point of failure.
@@ -28,8 +27,7 @@ When a NAT appliance becomes unavailable, its route is automatically withdrawn a
 ![Architecture Diagram](docs/architecture.png)
 
 
-
-## Key Features
+### Key Features
 
 - High availability egress architecture
 - AWS Transit Gateway Connect
@@ -39,7 +37,6 @@ When a NAT appliance becomes unavailable, its route is automatically withdrawn a
 - ECMP load balancing
 - Automatic failover
 - Infrastructure as Code using Terraform
-
 
 
 ### How It Works
@@ -90,7 +87,6 @@ This provides:
 - simpler upgrades
 - minimal host dependencies
 - easier rollback
-
 
 
 ## NAT Bypass
