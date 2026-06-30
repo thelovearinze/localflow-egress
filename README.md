@@ -1,4 +1,4 @@
-# Self-Healing Egress Architecture for AWS Local Zones
+## Self-Healing Egress Architecture for AWS Local Zones
 
 > A proof of concept demonstrating resilient outbound internet access for AWS Local Zones using AWS Transit Gateway Connect, GRE tunnels, containerized FRRouting, and iBGP.
 
@@ -12,7 +12,7 @@ https://medium.com/@thelovearinze/building-a-self-healing-egress-architecture-fo
 
 
 
-# Overview
+## Overview
 
 AWS Local Zones do not currently provide managed NAT Gateways. As a result, private workloads often rely on a single EC2 NAT instance for outbound internet access, introducing a critical single point of failure.
 
@@ -23,7 +23,7 @@ Instead of relying on CloudWatch alarms, Lambda functions, or route table update
 When a NAT appliance becomes unavailable, its route is automatically withdrawn and traffic converges to the remaining healthy appliance without manual intervention.
 
 
-# Architecture
+## Architecture
 
 ![Architecture Diagram](docs/architecture.png)
 
@@ -42,7 +42,7 @@ When a NAT appliance becomes unavailable, its route is automatically withdrawn a
 
 
 
-# How It Works
+## How It Works
 
 Two EC2 instances act as NAT appliances inside the AWS Local Zone.
 
@@ -77,9 +77,9 @@ No Lambda functions are required.
 
 
 
-# Technical Design Decisions
+## Technical Design Decisions
 
-## Containerized FRRouting
+### Containerized FRRouting
 
 Amazon Linux 2023 does not include FRRouting in the default repositories.
 
@@ -122,7 +122,7 @@ iptables -t mangle -A FORWARD \
 
 ---
 
-# Failover Validation
+## Failover Validation
 
 Generate continuous traffic from a private workload.
 
@@ -143,9 +143,9 @@ Expected result:
 - Traffic converges to the remaining appliance
 - Outbound connectivity continues after a brief convergence period
 
----
 
-# Technologies
+
+## Technologies
 
 - Terraform
 - AWS Transit Gateway
@@ -157,9 +157,9 @@ Expected result:
 - BGP (iBGP)
 - ECMP
 
----
 
-# Future Improvements
+
+## Future Improvements
 
 - Modular Terraform implementation
 - Automated deployment pipeline
@@ -167,13 +167,12 @@ Expected result:
 - CloudWatch monitoring
 - Additional Local Zone testing
 
----
 
-# License
+
+## License
 
 This project is provided as a proof of concept for educational and research purposes.
 
----
 
 If you found this project useful, consider reading the companion Medium article for the complete engineering journey, design decisions, and lessons learned.
 
