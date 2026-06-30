@@ -29,7 +29,7 @@ When a NAT appliance becomes unavailable, its route is automatically withdrawn a
 
 
 
-# Key Features
+## Key Features
 
 - High availability egress architecture
 - AWS Transit Gateway Connect
@@ -42,7 +42,7 @@ When a NAT appliance becomes unavailable, its route is automatically withdrawn a
 
 
 
-## How It Works
+### How It Works
 
 Two EC2 instances act as NAT appliances inside the AWS Local Zone.
 
@@ -64,7 +64,7 @@ No route tables are modified.
 No Lambda functions are required.
 
 
-# Repository Structure
+## Repository Structure
 
 ```
 .
@@ -74,7 +74,6 @@ No Lambda functions are required.
 ├── .terraform.lock.hcl
 
 ```
-
 
 
 ## Technical Design Decisions
@@ -107,7 +106,6 @@ iptables -t nat -I POSTROUTING \
 Without this rule, BGP packets are translated and Transit Gateway Connect cannot establish a healthy routing session.
 
 
-
 ## MSS Clamping
 
 GRE introduces additional packet overhead.
@@ -120,7 +118,6 @@ iptables -t mangle -A FORWARD \
 -j TCPMSS --clamp-mss-to-pmtu
 ```
 
----
 
 ## Failover Validation
 
@@ -144,7 +141,6 @@ Expected result:
 - Outbound connectivity continues after a brief convergence period
 
 
-
 ## Technologies
 
 - Terraform
@@ -158,7 +154,6 @@ Expected result:
 - ECMP
 
 
-
 ## Future Improvements
 
 - Modular Terraform implementation
@@ -166,7 +161,6 @@ Expected result:
 - Convergence benchmarking
 - CloudWatch monitoring
 - Additional Local Zone testing
-
 
 
 ## License
