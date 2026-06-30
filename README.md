@@ -2,7 +2,7 @@
 
 > A proof of concept demonstrating resilient outbound internet access for AWS Local Zones using AWS Transit Gateway Connect, GRE tunnels, containerized FRRouting, and iBGP.
 
-📖 **Companion Article**
+ **Companion Article**
 
 This repository accompanies the engineering case study:
 
@@ -10,7 +10,7 @@ This repository accompanies the engineering case study:
 
 https://medium.com/@thelovearinze/building-a-self-healing-egress-architecture-for-aws-local-zones-235967dadd22
 
----
+
 
 # Overview
 
@@ -22,13 +22,12 @@ Instead of relying on CloudWatch alarms, Lambda functions, or route table update
 
 When a NAT appliance becomes unavailable, its route is automatically withdrawn and traffic converges to the remaining healthy appliance without manual intervention.
 
----
 
 # Architecture
 
 ![Architecture Diagram](docs/architecture.png)
 
----
+
 
 # Key Features
 
@@ -41,7 +40,7 @@ When a NAT appliance becomes unavailable, its route is automatically withdrawn a
 - Automatic failover
 - Infrastructure as Code using Terraform
 
----
+
 
 # How It Works
 
@@ -64,7 +63,6 @@ No route tables are modified.
 
 No Lambda functions are required.
 
----
 
 # Repository Structure
 
@@ -77,7 +75,7 @@ No Lambda functions are required.
 
 ```
 
----
+
 
 # Technical Design Decisions
 
@@ -94,7 +92,7 @@ This provides:
 - minimal host dependencies
 - easier rollback
 
----
+
 
 ## NAT Bypass
 
@@ -108,7 +106,7 @@ iptables -t nat -I POSTROUTING \
 
 Without this rule, BGP packets are translated and Transit Gateway Connect cannot establish a healthy routing session.
 
----
+
 
 ## MSS Clamping
 
