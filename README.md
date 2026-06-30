@@ -1,110 +1,120 @@
-# Self-Healing AWS Egress Path via BGP & Containerized FRRouting POC
+# Self-Healing Egress Architecture for AWS Local Zones
 
-AWS Local Zones do not currently support managed NAT Gateways. As a result, workloads often depend on a single NAT instance for internet-bound traffic, creating a critical single point of failure.
+> A proof of concept demonstrating resilient outbound internet access for AWS Local Zones using AWS Transit Gateway Connect, GRE tunnels, containerized FRRouting, and iBGP.
 
-This project demonstrates a routing-based approach to eliminating that dependency. Instead of relying on Lambda functions, route table updates, or instance replacement workflows, failover is handled directly by the routing protocol using AWS Transit Gateway Connect and internal BGP (iBGP).
+📖 **Companion Article**
+
+This repository accompanies the engineering case study:
+
+**Building a Self-Healing Egress Architecture for AWS Local Zones**
+
+https://medium.com/@thelovearinze/building-a-self-healing-egress-architecture-for-aws-local-zones-235967dadd22
+
+---
+
+# Overview
+
+AWS Local Zones do not currently provide managed NAT Gateways. As a result, private workloads often rely on a single EC2 NAT instance for outbound internet access, introducing a critical single point of failure.
+
+This project explores a routing-based approach to eliminating that dependency.
+
+Instead of relying on CloudWatch alarms, Lambda functions, or route table updates after a failure occurs, failover is handled natively by the routing protocol using AWS Transit Gateway Connect and internal BGP (iBGP).
 
 When a NAT appliance becomes unavailable, its route is automatically withdrawn and traffic converges to the remaining healthy appliance without manual intervention.
 
+---
 
-## Architecture Overview
+# Architecture
 
-The design consists of two EC2 instances acting as NAT appliances running FRRouting (FRR) containers.
+![Architecture Diagram](docs/architecture.png)
 
-### Routing Control Plane
+---
 
-Each NAT instance runs a privileged Docker container hosting an FRRouting daemon.
+# Key Features
 
-### Overlay Network
+- High availability egress architecture
+- AWS Transit Gateway Connect
+- GRE tunnel overlay
+- Containerized FRRouting (FRR)
+- Internal BGP (iBGP)
+- ECMP load balancing
+- Automatic failover
+- Infrastructure as Code using Terraform
 
-The FRRouting containers establish iBGP sessions across a GRE tunnel backed by AWS Transit Gateway Connect attachments.
+---
 
-### Active/Active Load Balancing
+# How It Works
 
-Both NAT instances advertise a `0.0.0.0/0` default route to the Transit Gateway.
+Two EC2 instances act as NAT appliances inside the AWS Local Zone.
 
-The Transit Gateway uses Equal-Cost Multi-Path (ECMP) routing to distribute outbound traffic across both nodes.
+Each appliance runs FRRouting inside a Docker container and establishes an iBGP session across a GRE tunnel using AWS Transit Gateway Connect.
 
-### Proactive Failover
+Both appliances advertise a default route (0.0.0.0/0).
 
-If a NAT appliance:
+Transit Gateway installs both routes and distributes outbound traffic using Equal Cost Multi-Path (ECMP).
 
-- Crashes
-- Freezes
-- Loses upstream connectivity
+If one appliance becomes unavailable:
 
-The BGP hold timer expires and the Transit Gateway immediately removes the failed path.
+- the BGP session drops
+- the route is withdrawn
+- Transit Gateway converges traffic to the remaining appliance
+- outbound connectivity continues automatically
 
-Traffic automatically converges to the remaining healthy node within seconds.
+No route tables are modified.
 
+No Lambda functions are required.
 
-## Architecture Diagram
+---
 
-```text
-                     Internet
-                         |
-            +-------------------------+
-            |       Transit Gateway   |
-            +-------------------------+
-                 /               \
-                /                 \
-       GRE + iBGP             GRE + iBGP
-             |                     |
-    +----------------+   +----------------+
-    | NAT Appliance 1|   | NAT Appliance 2|
-    | FRR Container  |   | FRR Container  |
-    +----------------+   +----------------+
-             \                 /
-              \               /
-               \             /
-            Private Workloads
+# Repository Structure
+
+```
+.
+├── main.tf
+├── README.md
+├── .gitignore
+├── .terraform.lock.hcl
+
 ```
 
+---
 
+# Technical Design Decisions
 
-## Repository Structure
+## Containerized FRRouting
 
-| File | Description |
-|--------|-------------|
-| `main.tf` | Terraform configuration containing VPC, Transit Gateway, TGW Connect attachments, EC2 instances, and networking resources |
-| `.gitignore` | Excludes local state files, provider binaries, and credentials |
-| `.terraform.lock.hcl` | Terraform dependency lock file |
+Amazon Linux 2023 does not include FRRouting in the default repositories.
 
+Instead of tightly coupling routing software to the operating system, FRRouting runs inside a privileged Docker container using the host networking stack.
 
+This provides:
 
-## Core Technical Solutions
+- consistent deployments
+- simpler upgrades
+- minimal host dependencies
+- easier rollback
 
-### 1. Decoupled Containerized Routing
+---
 
-To avoid dependency conflicts on minimal operating systems such as Amazon Linux 2023, the FRRouting stack runs inside a Docker container while sharing the host network namespace.
+## NAT Bypass
 
-### 2. NAT Bypass Logic
-
-Since the EC2 instances perform outbound NAT, an explicit `iptables` exemption is required.
+Since the NAT appliances perform source NAT, GRE tunnel traffic must bypass masquerading.
 
 ```bash
 iptables -t nat -I POSTROUTING \
--s 169.254.0.0/16 \
+-d 169.254.0.0/16 \
 -j ACCEPT
 ```
 
-This prevents GRE tunnel traffic from being masqueraded and ensures BGP packets reach the Transit Gateway unchanged.
+Without this rule, BGP packets are translated and Transit Gateway Connect cannot establish a healthy routing session.
 
-### 3. Protocol Compliance
+---
 
-The design follows standard iBGP behavior and avoids invalid AS-PATH modifications within the same ASN.
+## MSS Clamping
 
-Benefits include:
+GRE introduces additional packet overhead.
 
-- Standards-compliant routing
-- ECMP support
-- Predictable failover behavior
-
-### 4. MSS Clamping
-
-The GRE overlay introduces additional packet overhead.
-
-To prevent fragmentation:
+To prevent fragmentation, TCP MSS is adjusted automatically.
 
 ```bash
 iptables -t mangle -A FORWARD \
@@ -112,56 +122,61 @@ iptables -t mangle -A FORWARD \
 -j TCPMSS --clamp-mss-to-pmtu
 ```
 
-This ensures reliable TCP communication across the overlay network.
+---
 
-## Failover Testing
+# Failover Validation
 
-### Step 1: Connect to a Private Workload
-
-Access a workload instance located behind the Transit Gateway.
-
-### Step 2: Generate Continuous Traffic
+Generate continuous traffic from a private workload.
 
 ```bash
 ping 8.8.8.8
 ```
 
-### Step 3: Simulate Failure
-
-Stop FRRouting on the primary appliance:
+Stop FRRouting on one appliance.
 
 ```bash
-sudo docker stop frr
+docker stop frr
 ```
 
-### Step 4: Observe Recovery
+Expected result:
 
-The active BGP path is withdrawn and traffic automatically shifts to the surviving NAT appliance.
+- BGP session drops
+- Transit Gateway withdraws the failed route
+- Traffic converges to the remaining appliance
+- Outbound connectivity continues after a brief convergence period
 
-Expected behavior:
+---
 
-- A few dropped packets
-- Automatic convergence
-
-
-## Key Benefits
-
-- Active/Active NAT architecture
-- BGP-driven failover
-- Transit Gateway ECMP load balancing
-- No route table manipulation
-- No AWS Lambda dependencies
-- Fast recovery during appliance failure
-- Suitable for AWS Local Zones
-
-## Technologies Used
+# Technologies
 
 - Terraform
 - AWS Transit Gateway
 - Transit Gateway Connect
-- GRE Tunnels
+- GRE
 - FRRouting (FRR)
 - Docker
 - Amazon Linux 2023
 - BGP (iBGP)
 - ECMP
+
+---
+
+# Future Improvements
+
+- Modular Terraform implementation
+- Automated deployment pipeline
+- Convergence benchmarking
+- CloudWatch monitoring
+- Additional Local Zone testing
+
+---
+
+# License
+
+This project is provided as a proof of concept for educational and research purposes.
+
+---
+
+If you found this project useful, consider reading the companion Medium article for the complete engineering journey, design decisions, and lessons learned.
+
+https://medium.com/@thelovearinze/building-a-self-healing-egress-architecture-for-aws-local-zones-235967dadd22
